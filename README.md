@@ -40,6 +40,12 @@ index.html?pideal=100&pobt=70&exig=60&nmin=1&napr=4&nmax=7&paso=0.1&orden=ascend
 | `titulo` | Nombre de la evaluación impreso en la hoja | vacío |
 | `papel` / `orientacion` / `densidad` | Opciones de impresión | carta / vertical / normal |
 
+## Al publicar cambios
+
+`index.html` enlaza los archivos de estilo y de código con una versión (`?v=2`). Al modificar
+cualquier archivo de `css/` o `js/`, **hay que subir ese número en las cinco referencias**. Si no, un
+navegador puede combinar el HTML nuevo con el código antiguo que tiene guardado y la página falla.
+
 ## Cómo se calcula
 
 Con `e` = exigencia, `p_max` = puntaje máximo considerado y `p_apr = e · p_max`:
