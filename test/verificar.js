@@ -82,6 +82,31 @@ for (const [id, params] of [['ideal', {}], ['departamental', {}], ['cohen', {}],
   comprobar('monotonía en ' + id, Escala.nota(r.papr - 1, esc) < Escala.nota(r.papr + 1, esc), true);
 }
 
+seccion('Explicaciones y advertencias (deben quedar legibles, sin NaN)');
+for (const [id, params] of [['ideal', {}], ['departamental', {}], ['cohen', {}],
+  ['cohen', { corregirAzar: true, nItems: 40, nOpciones: 4 }],
+  ['cohen', { tipoReferencia: 'mediaSuperior' }], ['cohen-mod', {}]]) {
+  const contexto = ctx({ params });
+  const r = Metodos.evaluar(id, contexto);
+  const metodo = Metodos.obtener(id);
+  const html = metodo.explicar(Object.assign({}, contexto, { params: r.params }), r);
+  const etiqueta = id + (Object.keys(params).length ? ' ' + JSON.stringify(params) : '');
+  comprobar('explicación sin NaN en ' + etiqueta, /NaN|undefined/.test(html), false);
+  comprobar('explicación con contenido en ' + etiqueta, html.length > 80, true);
+  comprobar('advertencias sin NaN en ' + etiqueta, /NaN|undefined/.test((r.advertencias || []).join(' ')), false);
+  comprobar('trazabilidad sin NaN en ' + etiqueta, /NaN|undefined/.test(JSON.stringify(r.trazabilidad)), false);
+}
+// La explicación debe nombrar el tipo de referencia realmente usado.
+function explicacionDe(id, params) {
+  const contexto = ctx({ params });
+  const r = Metodos.evaluar(id, contexto);
+  return Metodos.obtener(id).explicar(Object.assign({}, contexto, { params: r.params }), r);
+}
+comprobar('cohen con percentil lo dice', /percentil 95/.test(explicacionDe('cohen', {})), true);
+comprobar('cohen con media del tramo superior lo dice',
+  /media del 5 % superior/.test(explicacionDe('cohen', { tipoReferencia: 'mediaSuperior' })), true);
+comprobar('cohen corregido por azar muestra R', /R = 10/.test(explicacionDe('cohen', { corregirAzar: true, nItems: 40, nOpciones: 4 })), true);
+
 seccion('Aproximación chilena (truncar a centésimas, luego décimas)');
 comprobar('3,95 → 4,0', Escala.aproximarNota(3.95), 4.0);
 comprobar('3,94 → 3,9', Escala.aproximarNota(3.94), 3.9);

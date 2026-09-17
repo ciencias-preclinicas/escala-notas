@@ -120,7 +120,9 @@
       );
     }
 
-    return {
+    // Se conservan los campos propios que el método haya agregado a su resultado
+    // (por convención, con guion bajo): `explicar` y `advertencias` los usan.
+    return Object.assign({}, base, {
       metodo,
       params: ctx.params,
       papr,
@@ -129,7 +131,7 @@
       trazabilidad,
       advertencias,
       errores,
-    };
+    });
   }
 
   const Metodos = {
