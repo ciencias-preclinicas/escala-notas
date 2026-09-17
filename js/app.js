@@ -25,6 +25,8 @@
 
   let resultado = null;
   let columnasPantalla = 0;
+  // Queda en true mientras la tabla en pantalla no refleje el último cálculo.
+  let tablaPendiente = true;
   // Normalmente es la URL de la barra de direcciones; sirve de respaldo cuando el
   // navegador no deja actualizarla (archivo abierto con doble clic).
   let enlaceCompartible = location.href;
@@ -106,6 +108,7 @@
     }
 
     resultado = E.calcular(v);
+    tablaPendiente = true;
     renderResumen();
     renderTabla(true);
     renderHojas();
@@ -163,10 +166,15 @@
   /* ---------- Tabla en pantalla ---------- */
 
   function renderTabla(forzar) {
-    if (!resultado || tabla.clientWidth === 0) return;
-    const columnas = Math.max(1, Math.min(10, Math.floor((tabla.clientWidth + 12) / ANCHO_COLUMNA_PX)));
-    if (!forzar && columnas === columnasPantalla) return;
+    if (!resultado) return;
+    // La tabla puede medir 0 si la pestaña aún no tiene tamaño (abierta en segundo
+    // plano o en una ventana oculta). En ese caso se estima el ancho y, cuando el
+    // observador de tamaño avise el ancho real, se redibuja.
+    const ancho = tabla.clientWidth || document.documentElement.clientWidth || 1000;
+    const columnas = Math.max(1, Math.min(10, Math.floor((ancho + 12) / ANCHO_COLUMNA_PX)));
+    if (!forzar && !tablaPendiente && columnas === columnasPantalla) return;
     columnasPantalla = columnas;
+    tablaPendiente = false;
 
     const filas = resultado.filas;
     const porColumna = Math.ceil(filas.length / columnas);
@@ -353,17 +361,6 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  async function copiarEnlace() {
-    const boton = $('#btn-enlace');
-    try {
-      await navigator.clipboard.writeText(enlaceCompartible);
-      boton.textContent = 'Enlace copiado';
-    } catch (e) {
-      window.prompt('Copia este enlace:', enlaceCompartible);
-    }
-    setTimeout(() => { boton.textContent = 'Copiar enlace'; }, 2000);
-  }
-
   /* ---------- Eventos ---------- */
 
   let temporizador = null;
@@ -384,7 +381,6 @@
   $('#btn-vista').addEventListener('click', abrirVistaPrevia);
   $('#btn-vista-cerrar').addEventListener('click', cerrarVistaPrevia);
   $('#btn-excel').addEventListener('click', exportarExcel);
-  $('#btn-enlace').addEventListener('click', copiarEnlace);
 
   document.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape' && document.body.classList.contains('vista-previa') && !dialogo.open) cerrarVistaPrevia();
@@ -393,11 +389,15 @@
   // Ctrl+P / Cmd+P también imprime las hojas paginadas.
   window.addEventListener('beforeprint', renderHojas);
 
-  let esperaResize = null;
-  window.addEventListener('resize', () => {
-    clearTimeout(esperaResize);
-    esperaResize = setTimeout(() => renderTabla(false), 120);
-  });
+  // Redibuja al cambiar el ancho disponible, incluida la primera vez que la pestaña
+  // recibe tamaño (por ejemplo si se abrió en segundo plano).
+  let esperaAncho = null;
+  const alCambiarAncho = () => {
+    clearTimeout(esperaAncho);
+    esperaAncho = setTimeout(() => renderTabla(false), 120);
+  };
+  if (window.ResizeObserver) new ResizeObserver(alCambiarAncho).observe(tabla);
+  window.addEventListener('resize', alCambiarAncho);
 
   cargarDesdeUrl();
   actualizar();
