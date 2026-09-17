@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Escala de notas · Departamento de Ciencias Preclínicas UFRO</title>
+  <meta name="description" content="Generador de escalas de notas del Departamento de Ciencias Preclínicas, Facultad de Medicina, Universidad de La Frontera. Ajuste por puntaje máximo obtenido, exportación a Excel e impresión paginada.">
+  <meta name="theme-color" content="#003776">
+  <link rel="icon" type="image/png" sizes="64x64" href="img/favicon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+  <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+  <link rel="preload" as="image" href="img/emblema-color.png">
+  <link rel="preload" as="image" href="img/texto-color.png">
+  <link rel="stylesheet" href="css/styles.css">
+  <style id="regla-pagina">@page { size: 215.9mm 279.4mm; margin: 10mm; }</style>
+</head>
+<body>
+  <header class="institucional">
+    <div class="institucional-contenido">
+      <div class="marca">
+        <img class="marca-emblema" src="img/emblema-blanco.png" width="353" height="300" alt="">
+        <span class="marca-divisor" aria-hidden="true"></span>
+        <img class="marca-texto" src="img/texto-blanco.png" width="646" height="220"
+             alt="Universidad de La Frontera · Facultad de Medicina · Departamento de Ciencias Preclínicas">
+      </div>
+      <div class="herramienta">
+        <h1>Escala de notas</h1>
+      </div>
+    </div>
+  </header>
+
+  <div class="app">
+
+    <main>
+      <aside class="instruccion">
+        <p>Convierte puntajes en notas, ajustando el puntaje máximo según el mejor resultado del curso.
+          Completa los datos y la tabla se genera sola.</p>
+      </aside>
+
+      <form id="form" class="tarjeta parametros" novalidate autocomplete="off">
+        <fieldset>
+          <legend>Puntaje</legend>
+          <div class="campo">
+            <label for="pideal">Puntaje máximo ideal</label>
+            <input id="pideal" name="pideal" inputmode="decimal" aria-describedby="err-pideal">
+            <small class="error" id="err-pideal"></small>
+          </div>
+          <div class="campo">
+            <label for="pobt">Puntaje máximo obtenido <span class="opcional">(opcional)</span></label>
+            <input id="pobt" name="pobt" inputmode="decimal" placeholder="Sin ajuste" aria-describedby="ayuda-pobt err-pobt">
+            <small class="ayuda" id="ayuda-pobt">El mejor puntaje entre quienes rindieron.</small>
+            <small class="error" id="err-pobt"></small>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Notas</legend>
+          <div class="campo">
+            <label for="exig">Exigencia (%)</label>
+            <input id="exig" name="exig" inputmode="decimal" aria-describedby="err-exig">
+            <small class="error" id="err-exig"></small>
+          </div>
+          <div class="campo">
+            <label for="nmin">Nota mínima</label>
+            <input id="nmin" name="nmin" inputmode="decimal" aria-describedby="err-nmin">
+            <small class="error" id="err-nmin"></small>
+          </div>
+          <div class="campo">
+            <label for="napr">Nota de aprobación</label>
+            <input id="napr" name="napr" inputmode="decimal" aria-describedby="err-napr">
+            <small class="error" id="err-napr"></small>
+          </div>
+          <div class="campo">
+            <label for="nmax">Nota máxima</label>
+            <input id="nmax" name="nmax" inputmode="decimal" aria-describedby="err-nmax">
+            <small class="error" id="err-nmax"></small>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Tabla</legend>
+          <div class="campo">
+            <label for="paso">Incremento</label>
+            <select id="paso" name="paso">
+              <option value="0.01">0,01</option>
+              <option value="0.05">0,05</option>
+              <option value="0.1">0,1</option>
+              <option value="0.25">0,25</option>
+              <option value="0.5">0,5</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="5">5</option>
+              <option value="10">10</option>
+            </select>
+            <small class="error" id="err-paso"></small>
+          </div>
+          <div class="campo">
+            <label for="orden">Orden</label>
+            <select id="orden" name="orden">
+              <option value="ascendente">Ascendente</option>
+              <option value="descendente">Descendente</option>
+            </select>
+          </div>
+        </fieldset>
+      </form>
+
+      <section id="resumen" class="tarjeta resumen" aria-live="polite"></section>
+
+      <section class="tarjeta salida" aria-labelledby="titulo-salida">
+        <h2 id="titulo-salida">Imprimir y exportar</h2>
+        <div class="opciones-impresion">
+          <div class="campo campo-ancho">
+            <label for="titulo">Nombre de la evaluación <span class="opcional">(aparece en la hoja)</span></label>
+            <input id="titulo" name="titulo" form="form" maxlength="120" placeholder="Ej.: Prueba 2 · Matemática 3° B">
+          </div>
+          <div class="campo">
+            <label for="papel">Papel</label>
+            <select id="papel" name="papel" form="form">
+              <option value="carta">Carta</option>
+              <option value="oficio">Oficio</option>
+              <option value="a4">A4</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label for="orientacion">Orientación</label>
+            <select id="orientacion" name="orientacion" form="form">
+              <option value="vertical">Vertical</option>
+              <option value="horizontal">Horizontal</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label for="densidad">Tamaño de letra</label>
+            <select id="densidad" name="densidad" form="form">
+              <option value="compacta">Compacta</option>
+              <option value="normal">Normal</option>
+              <option value="grande">Grande</option>
+            </select>
+          </div>
+        </div>
+        <p id="info-paginas" class="info-paginas"></p>
+        <div class="acciones">
+          <button type="button" class="btn primario" id="btn-imprimir">Imprimir / PDF</button>
+          <button type="button" class="btn" id="btn-vista">Vista previa</button>
+          <button type="button" class="btn" id="btn-excel">Descargar Excel</button>
+          <button type="button" class="btn" id="btn-enlace">Copiar enlace</button>
+        </div>
+      </section>
+
+      <section aria-labelledby="titulo-tabla">
+        <h2 id="titulo-tabla" class="visualmente-oculto">Tabla de puntajes y notas</h2>
+        <p class="leyenda">Toca un puntaje para ver cómo se calculó su nota.</p>
+        <div id="tabla" class="escala"></div>
+      </section>
+
+      <details class="tarjeta ayuda">
+        <summary>¿Cómo se calcula?</summary>
+        <h3>1. Puntaje máximo considerado</h3>
+        <p>Si ingresas el puntaje máximo obtenido, la escala no usa el puntaje ideal sino el
+          <strong>promedio</strong> entre ambos. El descuento resultante no puede superar el
+          <strong>10 % del puntaje ideal</strong>; si lo supera, se descuenta exactamente ese 10 %.</p>
+        <p>Ejemplo con 100 puntos ideales: si el mejor obtuvo 90, se considera 95; si obtuvo 70, el
+          promedio (85) descontaría 15 puntos, así que se considera 90.</p>
+        <p>Los puntajes iguales o mayores al máximo considerado obtienen la nota máxima.</p>
+        <h3>2. Nota</h3>
+        <p>La escala son dos rectas que se unen en el puntaje de aprobación
+          (<em>exigencia × puntaje máximo considerado</em>):</p>
+        <ul>
+          <li>Bajo ese puntaje: nota = (n<sub>apr</sub> − n<sub>mín</sub>) × p ÷ p<sub>apr</sub> + n<sub>mín</sub></li>
+          <li>Desde ese puntaje: nota = (n<sub>máx</sub> − n<sub>apr</sub>) × (p − p<sub>apr</sub>) ÷ (p<sub>máx</sub> − p<sub>apr</sub>) + n<sub>apr</sub></li>
+        </ul>
+        <h3>3. Aproximación</h3>
+        <p>El resultado se trunca a dos decimales y luego se aproxima a un decimal: si la centésima es
+          5 o más, la décima sube (3,95 → 4,0; 3,94 → 3,9).</p>
+        <h3>Consejos de impresión</h3>
+        <p>En el cuadro de impresión usa escala al 100 % (o “Predeterminada”), desactiva
+          “Encabezados y pies de página” y elige el mismo papel que seleccionaste aquí. Para obtener
+          un PDF, elige “Guardar como PDF” como destino.</p>
+      </details>
+    </main>
+
+    <footer class="pie-sitio">
+      <picture>
+        <source srcset="img/emblema-blanco.png" media="(prefers-color-scheme: dark)">
+        <img src="img/emblema-color.png" width="351" height="300" alt="">
+      </picture>
+      <p>Herramienta del <strong>Departamento de Ciencias Preclínicas</strong><br>
+        Facultad de Medicina · Universidad de La Frontera · Temuco, Chile</p>
+    </footer>
+  </div>
+
+  <div class="barra-vista" role="toolbar" aria-label="Vista previa de impresión">
+    <span id="info-vista"></span>
+    <div class="acciones">
+      <button type="button" class="btn primario" id="btn-vista-imprimir">Imprimir / PDF</button>
+      <button type="button" class="btn" id="btn-vista-cerrar">Volver</button>
+    </div>
+  </div>
+  <div id="hojas" class="hojas"></div>
+
+  <dialog id="detalle" aria-labelledby="detalle-titulo">
+    <form method="dialog">
+      <h2 id="detalle-titulo"></h2>
+      <div id="detalle-cuerpo"></div>
+      <button class="btn primario" value="cerrar">Cerrar</button>
+    </form>
+  </dialog>
+
+  <script src="js/escala.js"></script>
+  <script src="js/impresion.js"></script>
+  <script src="js/xlsx.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
