@@ -190,6 +190,109 @@ input[aria-invalid="true"] { border-color: var(--peligro); }
 .instruccion p { margin: 0; }
 .resumen-error { grid-column: 1 / -1; margin: 0; color: var(--peligro); }
 
+/* Distribución de puntajes */
+.desplegable summary {
+  cursor: pointer;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.desplegable-cuerpo { padding-top: 12px; display: grid; gap: 10px; }
+.desplegable-cuerpo label { color: var(--texto-2); font-weight: 400; }
+textarea {
+  font: inherit;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  color: var(--texto);
+  background: var(--superficie);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 7px;
+  padding: 8px 10px;
+  width: 100%;
+  resize: vertical;
+}
+.insignia {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--fondo);
+  border: 1px solid var(--borde);
+  color: var(--texto-2);
+}
+.insignia-ok { background: var(--acento-suave); border-color: var(--acento); color: var(--acento); }
+.dist-resumen {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.dist-resumen div { background: var(--fondo); border-radius: 7px; padding: 6px 10px; }
+.dist-resumen dt { font-size: 0.75rem; color: var(--texto-2); }
+.dist-resumen dd { margin: 0; font-weight: 650; font-variant-numeric: tabular-nums; }
+.dist-descartes { margin: 0; color: var(--aviso); font-size: 0.85rem; }
+
+/* Método */
+.segmentado { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.seg-boton {
+  font: inherit;
+  font-weight: 550;
+  padding: 8px 14px;
+  min-height: 38px;
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 999px;
+  background: var(--superficie);
+  color: var(--texto);
+  cursor: pointer;
+}
+.seg-boton:hover:not(:disabled) { border-color: var(--acento); }
+.seg-boton.activo { background: var(--acento); border-color: var(--acento); color: #fff; }
+@media (prefers-color-scheme: dark) { .seg-boton.activo { color: #0d1420; } }
+.seg-boton:disabled { opacity: 0.45; cursor: not-allowed; }
+.cita { color: var(--texto-2); font-style: italic; }
+.no-disponibles p { margin: 4px 0 0; font-size: 0.85rem; color: var(--texto-2); }
+.parametros-metodo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.campo-check { justify-content: center; }
+.campo-check label { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.campo-check input { width: auto; min-height: 0; }
+.desplegable-interno { margin-top: 14px; border-top: 1px solid var(--borde); padding-top: 10px; }
+.desplegable-interno summary { cursor: pointer; font-size: 0.9rem; color: var(--texto-2); }
+.banda { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; margin-top: 10px; align-items: start; }
+
+/* Advertencias */
+.aviso {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: var(--aviso-fondo);
+  border-left: 4px solid var(--aviso);
+  border-radius: 7px;
+  font-size: 0.9rem;
+}
+
+/* Comparativa */
+.tabla-desliz { overflow-x: auto; }
+table.comparativa { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+table.comparativa th, table.comparativa td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--borde); }
+table.comparativa th[scope="row"] { text-align: left; font-weight: 500; white-space: nowrap; }
+table.comparativa thead th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--texto-2); }
+table.comparativa thead th:first-child { text-align: left; }
+table.comparativa tbody tr.activo { background: var(--acento-suave); }
+table.comparativa td { font-variant-numeric: tabular-nums; }
+table.comparativa .no-disponible { text-align: left; color: var(--texto-2); font-style: italic; }
+.etiqueta-activo {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--acento);
+  font-weight: 700;
+}
+
 /* Salida */
 .opciones-impresion {
   display: grid;

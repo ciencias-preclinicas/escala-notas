@@ -22,7 +22,7 @@
   const MARGEN = 10; // margen de @page
   const HOLGURA = 3; // evita que el navegador agregue una hoja en blanco por redondeo
   const SEPARACION = 4; // entre columnas
-  const ENCABEZADO = 22;
+  const ENCABEZADO = 27;
   const CABECERA_COLUMNA = 6;
   const PIE = 6;
 

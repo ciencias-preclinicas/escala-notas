@@ -4,6 +4,8 @@
   const E = window.Escala;
   const I = window.Impresion;
   const X = window.Xlsx;
+  const M = window.Metodos;
+  const Est = window.Estadistica;
 
   const $ = (sel) => document.querySelector(sel);
   const form = $('#form');
@@ -17,25 +19,58 @@
     paso: '1', orden: 'ascendente', titulo: '', papel: 'carta', orientacion: 'vertical', densidad: 'normal',
   };
   const CAMPOS = Object.keys(VALORES_INICIALES);
+  const METODO_POR_DEFECTO = 'departamental';
   const ANCHO_COLUMNA_PX = 124;
   const MARCA_IMPRESION =
     '<div class="hoja-marca"><img class="emblema" src="img/emblema-color.png" alt="">' +
     '<span class="divisor"></span>' +
     '<img class="texto" src="img/texto-color.png" alt="Universidad de La Frontera · Facultad de Medicina · Departamento de Ciencias Preclínicas"></div>';
 
-  let resultado = null;
+  const estado = {
+    metodoId: METODO_POR_DEFECTO,
+    params: {},                       // { metodoId: { paramId: valor } }
+    banda: Object.assign({}, M.BANDA_POR_DEFECTO),
+    distribucion: { texto: '', valores: [], descartados: [] },
+    pobtAutocompletado: false,
+  };
+
+  let resultado = null;      // tabla generada
+  let evaluacion = null;     // resultado del método activo
+  let contexto = null;
   let columnasPantalla = 0;
-  // Queda en true mientras la tabla en pantalla no refleje el último cálculo.
   let tablaPendiente = true;
-  // Normalmente es la URL de la barra de direcciones; sirve de respaldo cuando el
-  // navegador no deja actualizarla (archivo abierto con doble clic).
-  let enlaceCompartible = location.href;
 
   const campo = (nombre) => form.elements[nombre];
   const fc = (n, dec) => E.formatearCorto(n, dec === undefined ? 2 : dec);
-  const fp = (p) => E.formatear(p, resultado.dec);
+  const fp = (p) => E.formatear(p, resultado ? resultado.dec : 0);
   const fn = (n) => E.formatear(n, 1);
-  const pct = (x) => fc(x * 100, 2) + ' %';
+  const esc = (s) => I.escaparHtml(s);
+
+  /* ---------- Estado de métodos ---------- */
+
+  const metodoActivo = () => M.obtener(estado.metodoId) || M.obtener(METODO_POR_DEFECTO);
+
+  function paramsDe(metodoId) {
+    const metodo = M.obtener(metodoId);
+    if (!metodo) return {};
+    if (!estado.params[metodoId]) estado.params[metodoId] = M.parametrosPorDefecto(metodo);
+    return estado.params[metodoId];
+  }
+
+  function construirContexto(v, metodoId) {
+    const valores = estado.distribucion.valores;
+    return {
+      puntajeIdeal: v.pideal,
+      puntajeMaximoObtenido: v.pobt,
+      puntajes: valores.length ? valores : null,
+      exigencia: v.exig / 100,
+      nmin: v.nmin,
+      napr: v.napr,
+      nmax: v.nmax,
+      params: paramsDe(metodoId || estado.metodoId),
+      banda: estado.banda,
+    };
+  }
 
   /* ---------- Estado en la URL ---------- */
 
@@ -55,6 +90,23 @@
         el.value = valor;
       }
     }
+
+    if (q.has('metodo') && M.obtener(q.get('metodo'))) estado.metodoId = q.get('metodo');
+    const metodo = metodoActivo();
+    const params = paramsDe(metodo.id);
+    for (const def of metodo.parametros || []) {
+      if (!q.has('m.' + def.id)) continue;
+      const bruto = q.get('m.' + def.id);
+      if (def.tipo === 'checkbox') params[def.id] = bruto === '1' || bruto === 'true';
+      else if (def.tipo === 'number') { const n = E.leerNumero(bruto); if (n !== null && !Number.isNaN(n)) params[def.id] = n; }
+      else if (!def.opciones || def.opciones.some((o) => String(o.valor) === bruto)) params[def.id] = bruto;
+    }
+
+    if (q.has('banda')) estado.banda.activa = q.get('banda') === '1';
+    for (const [clave, prop] of [['bandaMin', 'corteMinPct'], ['bandaMax', 'corteMaxPct']]) {
+      const n = E.leerNumero(q.get(clave));
+      if (n !== null && !Number.isNaN(n)) estado.banda[prop] = n;
+    }
   }
 
   function guardarEnUrl() {
@@ -63,6 +115,18 @@
       const valor = campo(k).value.trim();
       if (valor !== '' && valor !== VALORES_INICIALES[k]) q.set(k, valor);
     }
+    const metodo = metodoActivo();
+    if (metodo.id !== METODO_POR_DEFECTO) q.set('metodo', metodo.id);
+    const params = paramsDe(metodo.id);
+    for (const def of metodo.parametros || []) {
+      const valor = params[def.id];
+      if (valor === def.porDefecto) continue;
+      q.set('m.' + def.id, def.tipo === 'checkbox' ? (valor ? '1' : '0') : String(valor));
+    }
+    if (estado.banda.activa !== M.BANDA_POR_DEFECTO.activa) q.set('banda', estado.banda.activa ? '1' : '0');
+    if (estado.banda.corteMinPct !== M.BANDA_POR_DEFECTO.corteMinPct) q.set('bandaMin', String(estado.banda.corteMinPct));
+    if (estado.banda.corteMaxPct !== M.BANDA_POR_DEFECTO.corteMaxPct) q.set('bandaMax', String(estado.banda.corteMaxPct));
+
     const url = location.pathname + (q.toString() ? '?' + q : '');
     try {
       history.replaceState(null, '', url);
@@ -73,94 +137,277 @@
     }
   }
 
-  /* ---------- Cálculo ---------- */
+  let enlaceCompartible = location.href;
 
-  function leerParametros() {
+  /* ---------- Lectura del formulario ---------- */
+
+  function leerBase() {
     const v = {};
     for (const k of NUMERICOS) v[k] = E.leerNumero(campo(k).value);
     v.orden = campo('orden').value;
     return v;
   }
 
-  function mostrarErrores(err) {
+  function mostrarErroresBase(err) {
     for (const k of NUMERICOS) {
       campo(k).setAttribute('aria-invalid', err[k] ? 'true' : 'false');
       $('#err-' + k).textContent = err[k] || '';
     }
   }
 
-  function actualizar() {
-    guardarEnUrl();
-    const v = leerParametros();
-    const err = E.validar(v);
-    mostrarErrores(err);
+  /* ---------- Distribución de puntajes ---------- */
 
-    const hayErrores = Object.keys(err).length > 0;
-    document.querySelectorAll('.salida .btn').forEach((b) => { b.disabled = hayErrores; });
+  function leerDistribucion() {
+    const texto = $('#puntajes').value;
+    const pideal = E.leerNumero(campo('pideal').value);
+    const maximo = pideal !== null && !Number.isNaN(pideal) && pideal > 0 ? pideal : undefined;
+    estado.distribucion = Object.assign({ texto }, Est.leerDistribucion(texto, { maximo }));
 
-    if (hayErrores) {
-      resultado = null;
-      tabla.innerHTML = '';
-      hojas.innerHTML = '';
-      $('#resumen').innerHTML = '<p class="resumen-error">Revisa los parámetros marcados para generar la escala.</p>';
-      $('#info-paginas').textContent = '';
+    const valores = estado.distribucion.valores;
+    if (valores.length) {
+      const maximoObtenido = Math.max(...valores);
+      const actual = campo('pobt').value.trim();
+      if (actual === '' || estado.pobtAutocompletado) {
+        campo('pobt').value = E.formatearCorto(maximoObtenido, 4);
+        estado.pobtAutocompletado = true;
+      }
+    }
+    renderDistribucion();
+  }
+
+  function renderDistribucion() {
+    const { valores, descartados } = estado.distribucion;
+    const r = Est.resumen(valores);
+    const insignia = $('#dist-insignia');
+    insignia.textContent = r ? r.n + ' puntajes' : 'sin cargar';
+    insignia.className = 'insignia' + (r ? ' insignia-ok' : '');
+
+    if (!r) {
+      $('#dist-estado').innerHTML = descartados.length
+        ? avisoDescartados(descartados)
+        : '<p class="ayuda">Pega aquí una columna de puntajes (uno por línea). Habilita los métodos de Cohen y ' +
+          'permite estimar la tasa de reprobación de cada método.</p>';
       return;
     }
+    const fila = (etiqueta, valor) => '<div><dt>' + etiqueta + '</dt><dd>' + fc(valor) + '</dd></div>';
+    $('#dist-estado').innerHTML =
+      '<dl class="dist-resumen">' +
+      fila('n', r.n) + fila('Mínimo', r.min) + fila('Máximo', r.max) + fila('Mediana', r.mediana) +
+      fila('P90', r.p90) + fila('P95', r.p95) +
+      '</dl>' + (descartados.length ? avisoDescartados(descartados) : '');
+  }
 
-    resultado = E.calcular(v);
+  function avisoDescartados(descartados) {
+    const detalle = descartados.slice(0, 8).map((d) => '«' + esc(d.texto) + '» (' + d.motivo + ')').join(', ');
+    return '<p class="dist-descartes">Se descartaron ' + descartados.length +
+      (descartados.length === 1 ? ' valor: ' : ' valores: ') + detalle +
+      (descartados.length > 8 ? ' y otros más.' : '.') + '</p>';
+  }
+
+  /* ---------- Selector de método y parámetros ---------- */
+
+  function renderSelectorMetodos(v) {
+    const contenedor = $('#selector-metodo');
+    const ctxBase = v ? construirContexto(v) : null;
+    const motivos = [];
+    contenedor.innerHTML = M.lista().map((m) => {
+      const disp = ctxBase ? M.disponibilidad(m, Object.assign({}, ctxBase, { params: paramsDe(m.id) })) : { ok: true };
+      const activo = m.id === estado.metodoId;
+      if (!disp.ok) motivos.push('<strong>' + esc(m.nombre) + ':</strong> ' + esc(disp.motivo));
+      return '<button type="button" role="radio" aria-checked="' + activo + '" class="seg-boton' +
+        (activo ? ' activo' : '') + (disp.ok ? '' : ' no-disponible') + '" data-metodo="' + m.id + '"' +
+        (disp.ok || activo ? '' : ' disabled') + '>' + esc(m.nombre) + '</button>';
+    }).join('');
+
+    const metodo = metodoActivo();
+    $('#metodo-descripcion').innerHTML =
+      esc(metodo.descripcionCorta) +
+      (metodo.referenciaBibliografica ? ' <span class="cita">' + esc(metodo.referenciaBibliografica) + '</span>' : '');
+    $('#metodo-no-disponibles').innerHTML = motivos.length ? motivos.map((m) => '<p>' + m + '</p>').join('') : '';
+  }
+
+  function renderParametrosMetodo() {
+    const metodo = metodoActivo();
+    const params = paramsDe(metodo.id);
+    const defs = (metodo.parametros || []).filter((d) => !d.visibleSi || d.visibleSi(params));
+    const contenedor = $('#parametros-metodo');
+    contenedor.innerHTML = defs.length
+      ? defs.map((d) => campoParametro(d, params[d.id])).join('')
+      : '<p class="ayuda">Este método no tiene parámetros ajustables.</p>';
+  }
+
+  function campoParametro(def, valor) {
+    const id = 'param-' + def.id;
+    const ayuda = def.ayuda ? '<small class="ayuda">' + esc(def.ayuda) + '</small>' : '';
+    if (def.tipo === 'checkbox') {
+      return '<div class="campo campo-check"><label for="' + id + '"><input type="checkbox" id="' + id + '" data-param="' +
+        def.id + '"' + (valor ? ' checked' : '') + '> ' + esc(def.etiqueta) + '</label>' + ayuda + '</div>';
+    }
+    if (def.tipo === 'select') {
+      const opciones = (def.opciones || []).map((o) =>
+        '<option value="' + esc(String(o.valor)) + '"' + (String(o.valor) === String(valor) ? ' selected' : '') + '>' +
+        esc(o.etiqueta) + '</option>').join('');
+      return '<div class="campo"><label for="' + id + '">' + esc(def.etiqueta) + '</label>' +
+        '<select id="' + id + '" data-param="' + def.id + '">' + opciones + '</select>' + ayuda + '</div>';
+    }
+    return '<div class="campo"><label for="' + id + '">' + esc(def.etiqueta) + '</label>' +
+      '<input id="' + id + '" data-param="' + def.id + '" inputmode="decimal" value="' + esc(E.formatearCorto(valor, 4)) + '">' +
+      ayuda + '</div>';
+  }
+
+  function leerParametroDesdeControl(control) {
+    const metodo = metodoActivo();
+    const def = (metodo.parametros || []).find((d) => d.id === control.dataset.param);
+    if (!def) return false;
+    const params = paramsDe(metodo.id);
+    if (def.tipo === 'checkbox') {
+      params[def.id] = control.checked;
+      return true;
+    }
+    if (def.tipo === 'select') {
+      params[def.id] = control.value;
+      return true;
+    }
+    const n = E.leerNumero(control.value);
+    if (n === null || Number.isNaN(n)) return false;
+    let valor = n;
+    if (def.min !== undefined) valor = Math.max(def.min, valor);
+    if (def.max !== undefined) valor = Math.min(def.max, valor);
+    params[def.id] = valor;
+    return true;
+  }
+
+  /* ---------- Ciclo principal ---------- */
+
+  function actualizar() {
+    guardarEnUrl();
+    const v = leerBase();
+    const err = E.validarBase(v);
+    mostrarErroresBase(err);
+    renderSelectorMetodos(Object.keys(err).length ? null : v);
+
+    if (Object.keys(err).length) return limpiarSalida('Revisa los parámetros marcados para generar la escala.');
+
+    contexto = construirContexto(v);
+    evaluacion = M.evaluar(estado.metodoId, contexto);
+
+    if (evaluacion.errores && evaluacion.errores.length) {
+      renderComparativa(v);
+      return limpiarSalida(evaluacion.errores.join(' '));
+    }
+
+    resultado = E.generar({
+      pideal: v.pideal, papr: evaluacion.papr, pmax: evaluacion.pmax,
+      nmin: v.nmin, napr: v.napr, nmax: v.nmax, paso: v.paso, orden: v.orden,
+    });
     tablaPendiente = true;
-    renderResumen();
+
+    document.querySelectorAll('.salida .btn').forEach((b) => { b.disabled = false; });
+    renderResumen(v);
+    renderAdvertencias();
+    renderComparativa(v);
+    renderExplicacion();
     renderTabla(true);
     renderHojas();
   }
 
+  function limpiarSalida(mensaje) {
+    resultado = null;
+    tabla.innerHTML = '';
+    hojas.innerHTML = '';
+    $('#resumen').innerHTML = '<p class="resumen-error">' + esc(mensaje) + '</p>';
+    $('#advertencias').innerHTML = '';
+    $('#explicacion').innerHTML = '';
+    $('#info-paginas').textContent = '';
+    document.querySelectorAll('.salida .btn').forEach((b) => { b.disabled = true; });
+  }
+
   /* ---------- Resumen ---------- */
 
-  function textoAjuste(r) {
-    const v = r.params;
-    const a = r.ajuste;
-    const tope = Math.round(E.TOPE_DESCUENTO * 100) + ' %';
-    if (!a.ajustado) {
-      return v.pobt === null
-        ? 'Sin ajuste: se usa el puntaje ideal (' + fc(v.pideal) + '). Ingresa el puntaje máximo obtenido para ajustar la escala.'
-        : 'Sin ajuste: el puntaje máximo obtenido es igual al ideal.';
-    }
-    const base = 'Promedio entre ideal (' + fc(v.pideal) + ') y obtenido (' + fc(v.pobt) + ') = ' + fc(a.promedio) + '. ';
-    if (a.topeAplicado) {
-      return base + 'Eso descontaría ' + fc(a.descuentoPromedio) + ' puntos (' + pct(a.descuentoPromedio / v.pideal) +
-        '), más que el tope de ' + tope + ', así que se descuentan solo ' + fc(a.descuento) + ' puntos.';
-    }
-    return base + 'Descuento de ' + fc(a.descuento) + ' puntos (' + pct(a.descuento / v.pideal) + '), dentro del tope de ' + tope + '.';
-  }
-
-  /** Exigencia efectiva: qué fracción del puntaje ideal se necesita realmente para aprobar. */
-  function exigenciaReal(r) {
-    return (r.papr / r.params.pideal) * 100;
-  }
-
-  function renderResumen() {
+  function renderResumen(v) {
     const r = resultado;
-    const v = r.params;
-    const real = exigenciaReal(r);
+    const exigenciaReal = (evaluacion.papr / v.pideal) * 100;
+    const difiere = Math.abs(exigenciaReal - v.exig) > 0.05;
+    const referencia = evaluacion.referencia;
+
     const datos = [
-      ['Puntaje máximo considerado', fc(r.pmax), r.ajuste.ajustado ? 'de ' + fc(v.pideal) : '', ''],
-      ['Nota ' + fn(v.napr) + ' desde', r.pCorte === null ? '—' : fp(r.pCorte), 'pts (' + fc(v.exig) + ' % = ' + fc(r.papr) + ')', ''],
+      ['Nota ' + fn(v.napr) + ' desde', r.pCorte === null ? '—' : fp(r.pCorte), 'pts (corte ' + fc(evaluacion.papr) + ')', ''],
       ['Nota ' + fn(v.nmax) + ' desde', r.pNotaMaxima === null ? '—' : fp(r.pNotaMaxima), 'pts', ''],
-      [
-        'Exigencia real sobre el puntaje ideal',
-        fc(real) + ' %',
-        r.ajuste.ajustado ? 'declaraste ' + fc(v.exig) + ' %' : 'igual a la declarada',
-        r.ajuste.ajustado ? ' advertencia' : '',
-      ],
+      ['Exigencia real sobre el puntaje ideal', fc(exigenciaReal) + ' %',
+        difiere ? 'declaraste ' + fc(v.exig) + ' %' : 'igual a la declarada', difiere ? ' advertencia' : ''],
+      referencia
+        ? [referencia.etiqueta, fc(referencia.valor), 'pts de referencia', '']
+        : ['Filas de la tabla', String(r.filas.length), '', ''],
     ];
-    const aviso = r.ajuste.ajustado
-      ? '<p class="resumen-aviso"><strong>Atención:</strong> al bajar la escala, aprobar exige ' + fc(r.papr) + ' de los ' +
-        fc(v.pideal) + ' puntos ideales, es decir ' + fc(real) + ' % del total y no el ' + fc(v.exig) + ' % declarado.</p>'
-      : '';
+
     $('#resumen').innerHTML = datos.map(([etiqueta, valor, extra, clase]) =>
-      '<div class="dato' + clase + '"><div class="dato-etiqueta">' + etiqueta + '</div><div class="dato-valor">' + valor +
-      (extra ? ' <small>' + extra + '</small>' : '') + '</div></div>'
-    ).join('') + '<p class="resumen-nota">' + I.escaparHtml(textoAjuste(r)) + '</p>' + aviso;
+      '<div class="dato' + clase + '"><div class="dato-etiqueta">' + esc(etiqueta) + '</div><div class="dato-valor">' +
+      esc(valor) + (extra ? ' <small>' + esc(extra) + '</small>' : '') + '</div></div>'
+    ).join('') +
+      '<p class="resumen-nota"><strong>' + esc(metodoActivo().nombre) + ':</strong> ' + esc(resumenTrazabilidad()) + '</p>';
+  }
+
+  /**
+   * Trazabilidad en una línea.
+   * @param {string[]} [soloClaves] limita a estas claves, en ese orden (para la hoja impresa,
+   *                                donde los parámetros ya aparecen en su propia línea).
+   */
+  function resumenTrazabilidad(soloClaves) {
+    const traza = evaluacion.trazabilidad || {};
+    const claves = soloClaves ? soloClaves.filter((k) => k in traza) : Object.keys(traza).filter((k) => k !== 'Método');
+    return claves.map((k) => k + ': ' + (typeof traza[k] === 'number' ? fc(traza[k]) : traza[k])).join(' · ');
+  }
+
+  // Claves que aportan información nueva en el encabezado impreso.
+  const CLAVES_IMPRESION = [
+    'Puntajes cargados (n)', 'Puntaje de referencia (X)', 'Convención de percentil',
+    'Puntaje máximo considerado', 'Tope aplicado', 'Corrección por azar (R)',
+    'Banda admisible', 'Corte antes del recorte',
+  ];
+
+  function renderAdvertencias() {
+    const avisos = evaluacion.advertencias || [];
+    $('#advertencias').innerHTML = avisos.length
+      ? avisos.map((a) => '<p class="aviso">' + esc(a) + '</p>').join('')
+      : '';
+  }
+
+  /* ---------- Panel comparativo ---------- */
+
+  function renderComparativa(v) {
+    const valores = estado.distribucion.valores;
+    const filas = M.lista().map((m) => {
+      const ctx = construirContexto(v, m.id);
+      const r = M.evaluar(m.id, ctx);
+      const activo = m.id === estado.metodoId;
+      if (!r.papr || (r.errores && r.errores.length)) {
+        return '<tr' + (activo ? ' class="activo"' : '') + '><th scope="row">' + esc(m.nombre) + '</th>' +
+          '<td colspan="3" class="no-disponible">' + esc((r.errores && r.errores[0]) || 'No disponible') + '</td></tr>';
+      }
+      const pct = (r.papr / v.pideal) * 100;
+      const reprobacion = valores.length ? fc(Est.tasaReprobacion(valores, r.papr) * 100) + ' %' : '—';
+      return '<tr' + (activo ? ' class="activo"' : '') + '><th scope="row">' + esc(m.nombre) + (activo ? ' <span class="etiqueta-activo">en uso</span>' : '') + '</th>' +
+        '<td>' + fc(r.papr) + ' pts</td><td>' + fc(pct) + ' %</td><td>' + reprobacion + '</td></tr>';
+    }).join('');
+
+    $('#comparativa').innerHTML =
+      '<h2>Comparación de métodos</h2>' +
+      '<div class="tabla-desliz"><table class="comparativa"><thead><tr><th scope="col">Método</th>' +
+      '<th scope="col">Corte</th><th scope="col">% del ideal</th><th scope="col">Reprobación</th></tr></thead>' +
+      '<tbody>' + filas + '</tbody></table></div>' +
+      '<p class="ayuda">' + (valores.length
+        ? 'Reprobación simulada sobre los ' + valores.length + ' puntajes cargados.'
+        : 'Carga los puntajes del curso para estimar la tasa de reprobación de cada método.') + '</p>';
+  }
+
+  /* ---------- Explicación dinámica ---------- */
+
+  function renderExplicacion() {
+    const metodo = metodoActivo();
+    const html = metodo.explicar ? metodo.explicar(contexto, evaluacion) : '';
+    $('#explicacion').innerHTML =
+      '<h3>' + esc(metodo.nombre) + '</h3>' + html +
+      (metodo.referenciaBibliografica ? '<p class="cita">' + esc(metodo.referenciaBibliografica) + '</p>' : '');
   }
 
   /* ---------- Tabla en pantalla ---------- */
@@ -200,28 +447,24 @@
 
   function abrirDetalle(fila) {
     const r = resultado;
-    const v = r.params;
+    const v = r.cfg;
     const d = E.desglose(r, fila.p);
     const p = fp(fila.p);
     const pasos = [];
 
-    pasos.push('<li><strong>Puntaje máximo considerado: ' + fc(r.pmax) + '.</strong> ' + I.escaparHtml(textoAjuste(r)) + '</li>');
-    pasos.push('<li><strong>Puntaje de aprobación:</strong> ' + fc(v.exig) + ' % × ' + fc(r.pmax) + ' = ' + fc(r.papr, 4) + '</li>');
+    pasos.push('<li><strong>Método:</strong> ' + esc(metodoActivo().nombre) + '. ' + esc(resumenTrazabilidad()) + '</li>');
+    pasos.push('<li><strong>Puntaje de aprobación:</strong> ' + fc(r.papr, 4) + ' pts · <strong>nota máxima desde:</strong> ' + fc(r.pmax, 4) + ' pts</li>');
 
     if (d.tramo === 'maximo') {
       pasos.push('<li>Como ' + p + ' ≥ ' + fc(r.pmax) + ', corresponde la nota máxima: <strong>' + fn(v.nmax) + '</strong>.</li>');
     } else {
-      let formula;
-      if (d.tramo === 'bajo') {
-        formula = '(' + fc(v.napr) + ' − ' + fc(v.nmin) + ') × ' + p + ' ÷ ' + fc(r.papr, 4) + ' + ' + fc(v.nmin);
-        pasos.push('<li>Como ' + p + ' &lt; ' + fc(r.papr, 4) + ', se usa el tramo bajo la aprobación:' +
-          '<span class="formula">n = ' + formula + ' = ' + fc(d.exacta, 5) + '</span></li>');
-      } else {
-        formula = '(' + fc(v.nmax) + ' − ' + fc(v.napr) + ') × (' + p + ' − ' + fc(r.papr, 4) + ') ÷ (' + fc(r.pmax) + ' − ' +
-          fc(r.papr, 4) + ') + ' + fc(v.napr);
-        pasos.push('<li>Como ' + p + ' ≥ ' + fc(r.papr, 4) + ', se usa el tramo sobre la aprobación:' +
-          '<span class="formula">n = ' + formula + ' = ' + fc(d.exacta, 5) + '</span></li>');
-      }
+      const formula = d.tramo === 'bajo'
+        ? fc(v.nmin) + ' + (' + fc(v.napr) + ' − ' + fc(v.nmin) + ') × ' + p + ' ÷ ' + fc(r.papr, 4)
+        : fc(v.napr) + ' + (' + fc(v.nmax) + ' − ' + fc(v.napr) + ') × (' + p + ' − ' + fc(r.papr, 4) + ') ÷ (' +
+          fc(r.pmax, 4) + ' − ' + fc(r.papr, 4) + ')';
+      pasos.push('<li>Como ' + p + (d.tramo === 'bajo' ? ' &lt; ' : ' ≥ ') + fc(r.papr, 4) +
+        ', se usa el tramo ' + (d.tramo === 'bajo' ? 'bajo' : 'sobre') + ' la aprobación:' +
+        '<span class="formula">n = ' + formula + ' = ' + fc(d.exacta, 5) + '</span></li>');
       pasos.push('<li><strong>Aproximación:</strong> se trunca a ' + E.formatear(d.truncada, 2) + ' y se aproxima a <strong>' + fn(d.nota) + '</strong>.</li>');
     }
 
@@ -236,29 +479,48 @@
     return { papel: campo('papel').value, orientacion: campo('orientacion').value, densidad: campo('densidad').value };
   }
 
+  /** Parámetros del método en una línea, para el encabezado impreso. */
+  function parametrosEnLinea() {
+    const metodo = metodoActivo();
+    const params = paramsDe(metodo.id);
+    return (metodo.parametros || [])
+      .filter((d) => !d.visibleSi || d.visibleSi(params))
+      .map((d) => {
+        const valor = params[d.id];
+        if (d.tipo === 'checkbox') return d.etiqueta + ': ' + (valor ? 'sí' : 'no');
+        if (d.tipo === 'select') {
+          const op = (d.opciones || []).find((o) => String(o.valor) === String(valor));
+          return d.etiqueta + ': ' + (op ? op.etiqueta : valor);
+        }
+        return d.etiqueta + ': ' + fc(valor, 4);
+      })
+      .join(' · ');
+  }
+
   function renderHojas() {
     if (!resultado) return;
     const r = resultado;
-    const v = r.params;
+    const v = r.cfg;
     const d = I.disposicion(opcionesImpresion());
     const titulo = campo('titulo').value.trim();
+    const metodo = metodoActivo();
+    const n = estado.distribucion.valores.length;
+    const pctPapr = (evaluacion.papr / v.pideal) * 100;
+    const pctPmax = (evaluacion.pmax / v.pideal) * 100;
 
-    const linea1 = [
-      'Notas ' + fn(v.nmin) + ' a ' + fn(v.nmax),
-      'aprobación ' + fn(v.napr),
-      'exigencia ' + fc(v.exig) + ' %',
-      'incremento ' + fc(v.paso, 4),
-    ].join(' · ');
-    const linea2 = r.ajuste.ajustado
-      ? 'Ideal ' + fc(v.pideal) + ' pts · máx. obtenido ' + fc(v.pobt) + ' · máx. considerado ' + fc(r.pmax) +
-        (r.ajuste.topeAplicado ? ' (tope ' + Math.round(E.TOPE_DESCUENTO * 100) + ' %)' : ' (promedio)')
-      : 'Puntaje máximo ' + fc(v.pideal) + ' (sin ajuste)';
-    const linea3 = 'Nota ' + fn(v.napr) + ' desde ' + (r.pCorte === null ? '—' : fp(r.pCorte)) + ' pts · nota ' + fn(v.nmax) +
-      ' desde ' + (r.pNotaMaxima === null ? '—' : fp(r.pNotaMaxima)) + ' pts';
+    const lineas = [
+      'Notas ' + fn(v.nmin) + ' a ' + fn(v.nmax) + ' · aprobación ' + fn(v.napr) + ' · incremento ' + fc(v.paso, 4) +
+        ' · puntaje ideal ' + fc(v.pideal),
+      'Método: ' + metodo.nombre + (parametrosEnLinea() ? ' · ' + parametrosEnLinea() : '') +
+        (n ? ' · n = ' + n : '') + (evaluacion.referencia ? ' · ' + evaluacion.referencia.etiqueta + ' = ' + fc(evaluacion.referencia.valor) : ''),
+      'Nota ' + fn(v.napr) + ' desde ' + fc(evaluacion.papr) + ' pts (' + fc(pctPapr) + ' % del ideal) · nota ' + fn(v.nmax) +
+        ' desde ' + fc(evaluacion.pmax) + ' pts (' + fc(pctPmax) + ' %)',
+      resumenTrazabilidad(CLAVES_IMPRESION),
+    ].filter((linea) => linea && linea.trim() !== '');
 
     const { html, paginas } = I.renderizar({
       titulo: titulo ? 'Escala de notas · ' + titulo : 'Escala de notas',
-      lineas: [linea1, linea2, linea3],
+      lineas,
       marcaHtml: MARCA_IMPRESION,
       pie: [
         'En rojo: notas bajo ' + fn(v.napr) + ' · línea gruesa: primer puntaje aprobatorio',
@@ -302,14 +564,13 @@
   /* ---------- Exportación ---------- */
 
   function nombreArchivo(ext) {
-    const r = resultado;
-    const v = r.params;
+    const v = resultado.cfg;
     const titulo = campo('titulo').value.trim();
     const partes = [
       titulo || 'Escala de notas',
+      metodoActivo().nombre,
       fc(v.nmin, 1) + '-' + fc(v.nmax, 1),
-      fc(r.pmax) + ' pts' + (r.ajuste.ajustado ? ' (ideal ' + fc(v.pideal) + ')' : ''),
-      fc(v.exig) + ' pct',
+      'corte ' + fc(evaluacion.papr) + ' de ' + fc(v.pideal) + ' pts',
     ];
     return partes.join(', ').replace(/[\\/:*?"<>|]+/g, '-') + '.' + ext;
   }
@@ -317,36 +578,61 @@
   function exportarExcel() {
     if (!resultado) return;
     const r = resultado;
-    const v = r.params;
+    const v = r.cfg;
     const titulo = campo('titulo').value.trim();
+    const n = estado.distribucion.valores.length;
 
     const escala = [[{ v: 'Puntaje', s: 'negrita' }, { v: 'Nota', s: 'negrita' }]].concat(
       r.filas.map((f) => [f.p, { v: f.nota, s: f.corte ? 'notaNegrita' : f.aprueba ? 'nota' : 'notaRoja' }])
     );
 
-    const parametros = [
+    const filas = [
       ['Evaluación', titulo || '—'],
-      ['Puntaje máximo ideal', v.pideal],
-      ['Puntaje máximo obtenido', v.pobt === null ? 'Sin ajuste' : v.pobt],
-      ['Promedio ideal / obtenido', r.ajuste.ajustado ? r.ajuste.promedio : '—'],
-      ['Tope de descuento', E.TOPE_DESCUENTO * 100 + ' % (' + fc(r.ajuste.tope) + ' pts)'],
-      ['Descuento aplicado (pts)', r.ajuste.descuento],
-      ['Puntaje máximo considerado', r.pmax],
-      ['Exigencia (%)', v.exig],
-      ['Puntaje de aprobación (exacto)', Math.round(r.papr * 10000) / 10000],
+      ['Método aplicado', metodoActivo().nombre],
+      ['Referencia bibliográfica', metodoActivo().referenciaBibliografica || '—'],
+    ];
+    for (const [clave, valor] of Object.entries(evaluacion.trazabilidad || {})) {
+      if (clave === 'Método') continue;
+      filas.push([clave, valor]);
+    }
+    filas.push(
+      ['Puntajes cargados (n)', n || 'no se cargó la distribución'],
+      ['Puntaje ideal', v.pideal],
+      ['Puntaje de aprobación (papr)', Math.round(evaluacion.papr * 10000) / 10000],
+      ['Puntaje de aprobación (% del ideal)', Math.round((evaluacion.papr / v.pideal) * 10000) / 100],
+      ['Puntaje de nota máxima (pmax)', Math.round(evaluacion.pmax * 10000) / 10000],
+      ['Puntaje de nota máxima (% del ideal)', Math.round((evaluacion.pmax / v.pideal) * 10000) / 100],
       ['Nota mínima', v.nmin],
       ['Nota de aprobación', v.napr],
       ['Nota máxima', v.nmax],
       ['Incremento', v.paso],
       ['Nota de aprobación desde (pts)', r.pCorte === null ? '—' : r.pCorte],
       ['Nota máxima desde (pts)', r.pNotaMaxima === null ? '—' : r.pNotaMaxima],
-      ['Enlace', enlaceCompartible],
-    ].map(([k, valor]) => [{ v: k, s: 'negrita' }, valor]);
+      ['Aproximación', 'truncar a centésimas y aproximar a décimas (5 hacia arriba)'],
+      ['Enlace', enlaceCompartible]
+    );
+    for (const aviso of evaluacion.advertencias || []) filas.push(['Advertencia', aviso]);
 
-    const bytes = X.crear([
+    const hojasExcel = [
       { nombre: 'Escala', anchos: [12, 10], congelarFilas: 1, filas: escala },
-      { nombre: 'Parámetros', anchos: [32, 40], filas: parametros },
-    ]);
+      { nombre: 'Parámetros', anchos: [34, 58], filas: filas.map(([k, valor]) => [{ v: k, s: 'negrita' }, valor]) },
+    ];
+    if (n) {
+      const res = Est.resumen(estado.distribucion.valores);
+      hojasExcel.push({
+        nombre: 'Distribución',
+        anchos: [12, 14],
+        filas: [[{ v: 'Puntaje', s: 'negrita' }, { v: 'Nota', s: 'negrita' }]].concat(
+          [...estado.distribucion.valores].sort((a, b) => a - b).map((p) => [p, { v: E.aproximarNota(E.nota(p, r.cfg)), s: 'nota' }])
+        ).concat([
+          [], [{ v: 'n', s: 'negrita' }, res.n], [{ v: 'Mínimo', s: 'negrita' }, res.min], [{ v: 'Máximo', s: 'negrita' }, res.max],
+          [{ v: 'Mediana', s: 'negrita' }, res.mediana], [{ v: 'P90', s: 'negrita' }, res.p90], [{ v: 'P95', s: 'negrita' }, res.p95],
+          [{ v: 'Reprobación', s: 'negrita' }, Math.round(Est.tasaReprobacion(estado.distribucion.valores, evaluacion.papr) * 10000) / 100],
+        ])
+      });
+    }
+
+    const bytes = X.crear(hojasExcel);
     descargar(new Blob([bytes], { type: X.MIME }), nombreArchivo('xlsx'));
   }
 
@@ -365,11 +651,60 @@
 
   let temporizador = null;
   form.addEventListener('input', (ev) => {
+    if (ev.target.id === 'pobt') estado.pobtAutocompletado = false;
     clearTimeout(temporizador);
-    temporizador = setTimeout(actualizar, ev.target.tagName === 'SELECT' ? 0 : 250);
+    temporizador = setTimeout(() => {
+      if (ev.target.id === 'pideal') leerDistribucion();
+      actualizar();
+    }, ev.target.tagName === 'SELECT' ? 0 : 250);
   });
   form.addEventListener('change', () => { clearTimeout(temporizador); actualizar(); });
   form.addEventListener('submit', (ev) => { ev.preventDefault(); actualizar(); });
+
+  $('#selector-metodo').addEventListener('click', (ev) => {
+    const boton = ev.target.closest('[data-metodo]');
+    if (!boton || boton.disabled) return;
+    estado.metodoId = boton.dataset.metodo;
+    renderParametrosMetodo();
+    actualizar();
+  });
+
+  const contenedorParams = $('#parametros-metodo');
+  contenedorParams.addEventListener('change', (ev) => {
+    if (!ev.target.dataset.param) return;
+    if (leerParametroDesdeControl(ev.target)) {
+      // Los select y checkbox pueden mostrar u ocultar otros parámetros.
+      if (ev.target.type === 'checkbox' || ev.target.tagName === 'SELECT') renderParametrosMetodo();
+      actualizar();
+    }
+  });
+  contenedorParams.addEventListener('input', (ev) => {
+    if (!ev.target.dataset.param || ev.target.tagName === 'SELECT' || ev.target.type === 'checkbox') return;
+    clearTimeout(temporizador);
+    temporizador = setTimeout(() => { if (leerParametroDesdeControl(ev.target)) actualizar(); }, 300);
+  });
+
+  let temporizadorDist = null;
+  $('#puntajes').addEventListener('input', () => {
+    clearTimeout(temporizadorDist);
+    temporizadorDist = setTimeout(() => { leerDistribucion(); actualizar(); }, 300);
+  });
+  $('#dist-limpiar').addEventListener('click', () => {
+    $('#puntajes').value = '';
+    estado.pobtAutocompletado = false;
+    leerDistribucion();
+    actualizar();
+  });
+
+  $('#banda-activa').addEventListener('change', (ev) => { estado.banda.activa = ev.target.checked; actualizar(); });
+  for (const [id, prop] of [['banda-min', 'corteMinPct'], ['banda-max', 'corteMaxPct']]) {
+    $('#' + id).addEventListener('change', (ev) => {
+      const n = E.leerNumero(ev.target.value);
+      if (n !== null && !Number.isNaN(n)) estado.banda[prop] = Math.min(100, Math.max(0, n));
+      ev.target.value = E.formatearCorto(estado.banda[prop], 2);
+      actualizar();
+    });
+  }
 
   tabla.addEventListener('click', (ev) => {
     const celda = ev.target.closest('.celda');
@@ -399,6 +734,13 @@
   if (window.ResizeObserver) new ResizeObserver(alCambiarAncho).observe(tabla);
   window.addEventListener('resize', alCambiarAncho);
 
+  /* ---------- Arranque ---------- */
+
   cargarDesdeUrl();
+  $('#banda-activa').checked = estado.banda.activa;
+  $('#banda-min').value = E.formatearCorto(estado.banda.corteMinPct, 2);
+  $('#banda-max').value = E.formatearCorto(estado.banda.corteMaxPct, 2);
+  renderParametrosMetodo();
+  leerDistribucion();
   actualizar();
 })();

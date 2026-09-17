@@ -1,12 +1,15 @@
 /*
- * Cálculo de escalas de notas (sin dependencias).
+ * Núcleo de cálculo: conversión de puntaje en nota y generación de la tabla.
+ *
+ * Es agnóstico al método de determinación del corte: solo recibe el puntaje que
+ * otorga la nota de aprobación (papr) y el que otorga la nota máxima (pmax).
+ * Cada método (js/metodos/) decide cómo se obtienen esos dos valores.
+ *
  * Disponible como window.Escala en el navegador y como módulo CommonJS en Node.
  */
 (function (root) {
   'use strict';
 
-  // Máximo descuento permitido sobre el puntaje ideal (10 %).
-  const TOPE_DESCUENTO = 0.10;
   // Límite de filas para no congelar el navegador.
   const MAX_FILAS = 20001;
   const EPS = 1e-9;
@@ -14,6 +17,7 @@
   /** Convierte texto ("4,5", "4.5", "") en número, null (vacío) o NaN (inválido). */
   function leerNumero(texto) {
     if (texto === null || texto === undefined) return null;
+    if (typeof texto === 'number') return texto;
     const s = String(texto).trim().replace(/\s+/g, '').replace(',', '.');
     if (s === '') return null;
     if (!/^-?(\d+\.?\d*|\.\d+)$/.test(s)) return NaN;
@@ -32,26 +36,19 @@
   }
 
   /**
-   * Puntaje máximo considerado para la escala.
-   * Promedio entre el ideal y el máximo obtenido, sin descontar más del 10 % del ideal.
+   * Nota exacta, sin aproximar: dos rectas que se unen en el puntaje de aprobación.
+   * @param {number} p puntaje obtenido
+   * @param {{papr: number, pmax: number, nmin?: number, napr?: number, nmax?: number}} esc
    */
-  function puntajeConsiderado(ideal, obtenido) {
-    const tope = ideal * TOPE_DESCUENTO;
-    if (obtenido === null || obtenido === undefined || obtenido >= ideal) {
-      return { pmax: ideal, ajustado: false, promedio: null, descuento: 0, descuentoPromedio: 0, tope, topeAplicado: false };
-    }
-    const promedio = (ideal + obtenido) / 2;
-    const descuentoPromedio = ideal - promedio;
-    const topeAplicado = descuentoPromedio > tope + EPS;
-    const pmax = topeAplicado ? ideal - tope : promedio;
-    return { pmax, ajustado: true, promedio, descuento: ideal - pmax, descuentoPromedio, tope, topeAplicado };
-  }
-
-  /** Nota sin aproximar: dos rectas unidas en el punto de aprobación. */
-  function notaExacta(p, e) {
-    if (p >= e.pmax) return e.nmax;
-    if (p < e.papr) return (e.napr - e.nmin) * p / e.papr + e.nmin;
-    return (e.nmax - e.napr) * (p - e.papr) / (e.pmax - e.papr) + e.napr;
+  function nota(p, esc) {
+    const nmin = esc.nmin === undefined ? 1.0 : esc.nmin;
+    const napr = esc.napr === undefined ? 4.0 : esc.napr;
+    const nmax = esc.nmax === undefined ? 7.0 : esc.nmax;
+    if (p <= 0) return nmin;
+    if (p >= esc.pmax) return nmax;
+    return p < esc.papr
+      ? nmin + (napr - nmin) * (p / esc.papr)
+      : napr + (nmax - napr) * ((p - esc.papr) / (esc.pmax - esc.papr));
   }
 
   /** Aproximación tradicional chilena: truncar a centésimas y redondear a décimas (5 hacia arriba). */
@@ -63,8 +60,11 @@
     return Math.floor((centesimas + 5) / 10) / 10;
   }
 
-  /** Devuelve un objeto { campo: mensaje } con los errores encontrados. */
-  function validar(v) {
+  /**
+   * Valida los datos que no dependen del método.
+   * @returns {Object} { campo: mensaje }
+   */
+  function validarBase(v) {
     const err = {};
     const requerido = (k, nombre) => {
       if (v[k] === null) err[k] = 'Ingresa ' + nombre + '.';
@@ -93,37 +93,42 @@
     return err;
   }
 
-  /** Genera la escala completa. Supone parámetros ya validados. */
-  function calcular(v) {
-    const ajuste = puntajeConsiderado(v.pideal, v.pobt);
-    const pmax = ajuste.pmax;
-    const papr = v.exig * pmax / 100;
-    const esc = { nmin: v.nmin, napr: v.napr, nmax: v.nmax, pmax, papr };
-    const dec = Math.max(decimalesDe(v.paso), decimalesDe(v.pideal));
+  /**
+   * Genera la tabla completa de puntajes y notas.
+   * @param {{pideal, papr, pmax, nmin, napr, nmax, paso, orden}} cfg
+   */
+  function generar(cfg) {
+    const esc = { papr: cfg.papr, pmax: cfg.pmax, nmin: cfg.nmin, napr: cfg.napr, nmax: cfg.nmax };
+    const dec = Math.max(decimalesDe(cfg.paso), decimalesDe(cfg.pideal));
 
     const fila = (p) => {
-      const exacta = notaExacta(p, esc);
-      const nota = aproximarNota(exacta);
-      return { p, exacta, nota, aprueba: nota >= v.napr - EPS, maxima: p >= pmax - EPS };
+      const exacta = nota(p, esc);
+      const aproximada = aproximarNota(exacta);
+      return {
+        p,
+        exacta,
+        nota: aproximada,
+        aprueba: aproximada >= cfg.napr - EPS,
+        maxima: p >= cfg.pmax - EPS,
+      };
     };
 
     const filas = [];
-    const n = Math.floor(v.pideal / v.paso + EPS);
-    for (let i = 0; i <= n; i++) filas.push(fila(redondear(i * v.paso, dec)));
-    if (filas[filas.length - 1].p < v.pideal - EPS) filas.push(fila(v.pideal));
+    const n = Math.floor(cfg.pideal / cfg.paso + EPS);
+    for (let i = 0; i <= n; i++) filas.push(fila(redondear(i * cfg.paso, dec)));
+    if (filas[filas.length - 1].p < cfg.pideal - EPS) filas.push(fila(cfg.pideal));
 
     const primeraAprobada = filas.find((f) => f.aprueba);
-    const primeraMaxima = filas.find((f) => f.nota >= v.nmax - EPS);
+    const primeraMaxima = filas.find((f) => f.nota >= cfg.nmax - EPS);
     const pCorte = primeraAprobada ? primeraAprobada.p : null;
     for (const f of filas) f.corte = f.p === pCorte;
 
-    if (v.orden === 'descendente') filas.reverse();
+    if (cfg.orden === 'descendente') filas.reverse();
 
     return {
-      params: v,
-      ajuste,
-      pmax,
-      papr,
+      cfg,
+      papr: cfg.papr,
+      pmax: cfg.pmax,
       dec,
       filas,
       pCorte,
@@ -131,12 +136,11 @@
     };
   }
 
-  /** Detalle paso a paso del cálculo para un puntaje. */
+  /** Detalle paso a paso del cálculo de un puntaje. */
   function desglose(res, p) {
-    const v = res.params;
-    const esc = { nmin: v.nmin, napr: v.napr, nmax: v.nmax, pmax: res.pmax, papr: res.papr };
-    const exacta = notaExacta(p, esc);
-    const tramo = p >= res.pmax ? 'maximo' : p < res.papr ? 'bajo' : 'sobre';
+    const cfg = res.cfg;
+    const exacta = nota(p, cfg);
+    const tramo = p >= cfg.pmax ? 'maximo' : p < cfg.papr ? 'bajo' : 'sobre';
     return { p, tramo, exacta, truncada: truncarCentesimas(exacta), nota: aproximarNota(exacta) };
   }
 
@@ -150,16 +154,16 @@
   }
 
   const Escala = {
-    TOPE_DESCUENTO,
     MAX_FILAS,
+    EPS,
     leerNumero,
     decimalesDe,
-    puntajeConsiderado,
-    notaExacta,
+    redondear,
+    nota,
     truncarCentesimas,
     aproximarNota,
-    validar,
-    calcular,
+    validarBase,
+    generar,
     desglose,
     formatear,
     formatearCorto,

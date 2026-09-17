@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
   <link rel="preload" as="image" href="img/emblema-color.png">
   <link rel="preload" as="image" href="img/texto-color.png">
-  <link rel="stylesheet" href="css/styles.css?v=2">
+  <link rel="stylesheet" href="css/styles.css?v=3">
   <style id="regla-pagina">@page { size: 215.9mm 279.4mm; margin: 10mm; }</style>
 </head>
 <body>
@@ -104,7 +104,48 @@
         </fieldset>
       </form>
 
+      <details id="distribucion" class="tarjeta desplegable">
+        <summary>Puntajes del curso <span id="dist-insignia" class="insignia">sin cargar</span></summary>
+        <div class="desplegable-cuerpo">
+          <label for="puntajes">Un puntaje por línea. Puedes pegar una columna copiada desde Excel; se acepta coma o punto decimal.</label>
+          <textarea id="puntajes" rows="6" spellcheck="false" placeholder="30&#10;34&#10;36&#10;38"></textarea>
+          <div class="acciones">
+            <button type="button" class="btn" id="dist-limpiar">Limpiar</button>
+          </div>
+          <div id="dist-estado"></div>
+        </div>
+      </details>
+
+      <section class="tarjeta metodo" aria-labelledby="titulo-metodo">
+        <h2 id="titulo-metodo">Método para determinar el corte</h2>
+        <div id="selector-metodo" class="segmentado" role="radiogroup" aria-labelledby="titulo-metodo"></div>
+        <p id="metodo-descripcion" class="ayuda"></p>
+        <div id="metodo-no-disponibles" class="no-disponibles"></div>
+        <div id="parametros-metodo" class="parametros-metodo"></div>
+        <details class="desplegable-interno">
+          <summary>Banda admisible del corte</summary>
+          <div class="banda">
+            <div class="campo campo-check">
+              <label for="banda-activa"><input type="checkbox" id="banda-activa"> Recortar el corte si cae fuera de la banda</label>
+              <small class="ayuda">Si está apagada, solo se avisa cuando el corte queda fuera, sin modificar el cálculo.</small>
+            </div>
+            <div class="campo">
+              <label for="banda-min">Mínimo (% del ideal)</label>
+              <input id="banda-min" inputmode="decimal">
+            </div>
+            <div class="campo">
+              <label for="banda-max">Máximo (% del ideal)</label>
+              <input id="banda-max" inputmode="decimal">
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <section id="advertencias" aria-live="polite"></section>
+
       <section id="resumen" class="tarjeta resumen" aria-live="polite"></section>
+
+      <section id="comparativa" class="tarjeta"></section>
 
       <section class="tarjeta salida" aria-labelledby="titulo-salida">
         <h2 id="titulo-salida">Imprimir y exportar</h2>
@@ -153,19 +194,14 @@
 
       <details class="tarjeta ayuda">
         <summary>¿Cómo se calcula?</summary>
-        <h3>1. Puntaje máximo considerado</h3>
-        <p>Si ingresas el puntaje máximo obtenido, la escala no usa el puntaje ideal sino el
-          <strong>promedio</strong> entre ambos. El descuento resultante no puede superar el
-          <strong>10 % del puntaje ideal</strong>; si lo supera, se descuenta exactamente ese 10 %.</p>
-        <p>Ejemplo con 100 puntos ideales: si el mejor obtuvo 90, se considera 95; si obtuvo 70, el
-          promedio (85) descontaría 15 puntos, así que se considera 90.</p>
-        <p>Los puntajes iguales o mayores al máximo considerado obtienen la nota máxima.</p>
+        <h3>1. El corte, según el método elegido</h3>
+        <div id="explicacion"></div>
         <h3>2. Nota</h3>
-        <p>La escala son dos rectas que se unen en el puntaje de aprobación
-          (<em>exigencia × puntaje máximo considerado</em>):</p>
+        <p>Cualquiera sea el método, la escala son dos rectas que se unen en el puntaje de
+          aprobación (p<sub>apr</sub>) y llegan a la nota máxima en p<sub>máx</sub>:</p>
         <ul>
-          <li>Bajo ese puntaje: nota = (n<sub>apr</sub> − n<sub>mín</sub>) × p ÷ p<sub>apr</sub> + n<sub>mín</sub></li>
-          <li>Desde ese puntaje: nota = (n<sub>máx</sub> − n<sub>apr</sub>) × (p − p<sub>apr</sub>) ÷ (p<sub>máx</sub> − p<sub>apr</sub>) + n<sub>apr</sub></li>
+          <li>Bajo p<sub>apr</sub>: nota = n<sub>mín</sub> + (n<sub>apr</sub> − n<sub>mín</sub>) × p ÷ p<sub>apr</sub></li>
+          <li>Desde p<sub>apr</sub>: nota = n<sub>apr</sub> + (n<sub>máx</sub> − n<sub>apr</sub>) × (p − p<sub>apr</sub>) ÷ (p<sub>máx</sub> − p<sub>apr</sub>)</li>
         </ul>
         <h3>3. Aproximación</h3>
         <p>El resultado se trunca a dos decimales y luego se aproxima a un decimal: si la centésima es
@@ -204,9 +240,15 @@
     </form>
   </dialog>
 
-  <script src="js/escala.js?v=2"></script>
-  <script src="js/impresion.js?v=2"></script>
-  <script src="js/xlsx.js?v=2"></script>
-  <script src="js/app.js?v=2"></script>
+  <script src="js/escala.js?v=3"></script>
+  <script src="js/estadistica.js?v=3"></script>
+  <script src="js/impresion.js?v=3"></script>
+  <script src="js/xlsx.js?v=3"></script>
+  <script src="js/metodos/index.js?v=3"></script>
+  <script src="js/metodos/ideal.js?v=3"></script>
+  <script src="js/metodos/departamental.js?v=3"></script>
+  <script src="js/metodos/cohen.js?v=3"></script>
+  <script src="js/metodos/cohen-mod.js?v=3"></script>
+  <script src="js/app.js?v=3"></script>
 </body>
 </html>
