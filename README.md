@@ -54,7 +54,7 @@ guarda en ninguna parte.
 
 ## Al publicar cambios
 
-`index.html` enlaza los archivos de estilo y de código con una versión (`?v=4`). Al modificar
+`index.html` enlaza los archivos de estilo y de código con una versión (`?v=6`). Al modificar
 cualquier archivo de `css/` o `js/`, **hay que subir ese número en todas las referencias**. Si no, un
 navegador puede combinar el HTML nuevo con el código antiguo que tiene guardado y la página falla.
 

@@ -64,6 +64,7 @@ convención tradicional chilena. Eso lo hace el motor, no los métodos.
  * @property {ParamDef[]} parametros
  * @property {(ctx: Contexto) => Resultado} calcular
  * @property {(ctx: Contexto, res: Resultado) => string} explicar    // HTML para «¿Cómo se calcula?»
+ * @property {(ctx: Contexto, res: Resultado) => string} [resumenCorto]  // una frase para la tarjeta de resumen
  * @property {(ctx: Contexto, res: Resultado) => string[]} [advertencias]
  */
 ```
@@ -78,6 +79,13 @@ Notas sobre cada campo:
 | `trazabilidad` | Pares clave/valor que terminan en el encabezado de la hoja impresa y en la hoja «Parámetros» del Excel. Es el respaldo formal de la decisión: conviene ser explícito y no ahorrar claves. |
 | `advertencias` | Textos que se muestran en pantalla, no en la consola. Sirven para muestras pequeñas, supuestos frágiles o resultados llamativos. |
 | `explicar` | HTML que alimenta la sección «¿Cómo se calcula?». Se recomienda mostrar la fórmula con los números concretos del caso. |
+| `resumenCorto` | Una frase en texto plano para la tarjeta de resumen, que es lo que ve quien no abre el panel de métodos. Si no se declara, se muestra la trazabilidad. |
+
+La portada muestra por omisión el método `departamental`, sin controles de método a la vista: el
+selector, los parámetros, la distribución y el panel comparativo viven dentro del desplegable «Otros
+métodos para determinar el corte», que se abre solo si el usuario lo pide o si el enlace trae
+`metodo=`, `m.<id>=` o `banda*=`. Por eso conviene que todo método declare `resumenCorto`: esa frase
+es lo único que ve quien no abre el panel.
 
 El registro (`js/metodos/index.js`) aplica además, de forma transversal a todos los métodos, la
 **banda admisible**: si `papr` cae fuera del rango `corteMinPct`–`corteMaxPct` (por omisión 45 %–65 %
@@ -136,6 +144,11 @@ funciona tanto en el navegador (variable global) como en Node (CommonJS), sin co
           'Factor': fmt(ctx.params.factor),
         },
       };
+    },
+
+    resumenCorto(ctx, res) {
+      return 'El corte es el ' + fmt(ctx.params.factor * 100) + ' % de la mediana del curso (' +
+        fmt(res.referencia.valor) + ' pts).';
     },
 
     explicar(ctx, res) {

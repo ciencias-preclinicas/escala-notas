@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
   <link rel="preload" as="image" href="img/emblema-color.png">
   <link rel="preload" as="image" href="img/texto-color.png">
-  <link rel="stylesheet" href="css/styles.css?v=4">
+  <link rel="stylesheet" href="css/styles.css?v=6">
   <style id="regla-pagina">@page { size: 215.9mm 279.4mm; margin: 10mm; }</style>
 </head>
 <body>
@@ -104,48 +104,60 @@
         </fieldset>
       </form>
 
-      <details id="distribucion" class="tarjeta desplegable">
-        <summary>Puntajes del curso <span id="dist-insignia" class="insignia">sin cargar</span></summary>
+      <details id="avanzado" class="tarjeta desplegable avanzado">
+        <summary>
+          Otros métodos para determinar el corte
+          <span id="avanzado-insignia" class="insignia" hidden></span>
+        </summary>
         <div class="desplegable-cuerpo">
-          <label for="puntajes">Un puntaje por línea. Puedes pegar una columna copiada desde Excel; se acepta coma o punto decimal.</label>
-          <textarea id="puntajes" rows="6" spellcheck="false" placeholder="30&#10;34&#10;36&#10;38"></textarea>
-          <div class="acciones">
-            <button type="button" class="btn" id="dist-limpiar">Limpiar</button>
+          <p class="ayuda">La escala que ves arriba usa el método habitual del departamento: el promedio
+            entre el puntaje ideal y el máximo obtenido, con tope de 10 % de descuento. Aquí puedes
+            probar métodos alternativos, como los de Cohen, que derivan el corte del rendimiento del
+            propio curso, y compararlos entre sí. <a href="docs/metodos.md">Ver documentación</a>.</p>
+
+          <div class="sub-seccion">
+            <h3>Puntajes del curso <span id="dist-insignia" class="insignia">sin cargar</span></h3>
+            <label for="puntajes">Un puntaje por línea. Puedes pegar una columna copiada desde Excel; se acepta coma o punto decimal.</label>
+            <textarea id="puntajes" rows="6" spellcheck="false" placeholder="30&#10;34&#10;36&#10;38"></textarea>
+            <div class="acciones">
+              <button type="button" class="btn" id="dist-limpiar">Limpiar</button>
+            </div>
+            <div id="dist-estado"></div>
           </div>
-          <div id="dist-estado"></div>
+
+          <div class="sub-seccion">
+            <h3 id="titulo-metodo">Método aplicado</h3>
+            <div id="selector-metodo" class="segmentado" role="radiogroup" aria-labelledby="titulo-metodo"></div>
+            <p id="metodo-descripcion" class="ayuda"></p>
+            <div id="metodo-no-disponibles" class="no-disponibles"></div>
+            <div id="parametros-metodo" class="parametros-metodo"></div>
+            <p id="traza-metodo" class="ayuda traza"></p>
+            <details class="desplegable-interno">
+              <summary>Banda admisible del corte</summary>
+              <div class="banda">
+                <div class="campo campo-check">
+                  <label for="banda-activa"><input type="checkbox" id="banda-activa"> Recortar el corte si cae fuera de la banda</label>
+                  <small class="ayuda">Si está apagada, solo se avisa cuando el corte queda fuera, sin modificar el cálculo.</small>
+                </div>
+                <div class="campo">
+                  <label for="banda-min">Mínimo (% del ideal)</label>
+                  <input id="banda-min" inputmode="decimal">
+                </div>
+                <div class="campo">
+                  <label for="banda-max">Máximo (% del ideal)</label>
+                  <input id="banda-max" inputmode="decimal">
+                </div>
+              </div>
+            </details>
+          </div>
+
+          <div class="sub-seccion" id="comparativa"></div>
         </div>
       </details>
-
-      <section class="tarjeta metodo" aria-labelledby="titulo-metodo">
-        <h2 id="titulo-metodo">Método para determinar el corte</h2>
-        <div id="selector-metodo" class="segmentado" role="radiogroup" aria-labelledby="titulo-metodo"></div>
-        <p id="metodo-descripcion" class="ayuda"></p>
-        <div id="metodo-no-disponibles" class="no-disponibles"></div>
-        <div id="parametros-metodo" class="parametros-metodo"></div>
-        <details class="desplegable-interno">
-          <summary>Banda admisible del corte</summary>
-          <div class="banda">
-            <div class="campo campo-check">
-              <label for="banda-activa"><input type="checkbox" id="banda-activa"> Recortar el corte si cae fuera de la banda</label>
-              <small class="ayuda">Si está apagada, solo se avisa cuando el corte queda fuera, sin modificar el cálculo.</small>
-            </div>
-            <div class="campo">
-              <label for="banda-min">Mínimo (% del ideal)</label>
-              <input id="banda-min" inputmode="decimal">
-            </div>
-            <div class="campo">
-              <label for="banda-max">Máximo (% del ideal)</label>
-              <input id="banda-max" inputmode="decimal">
-            </div>
-          </div>
-        </details>
-      </section>
 
       <section id="advertencias" aria-live="polite"></section>
 
       <section id="resumen" class="tarjeta resumen" aria-live="polite"></section>
-
-      <section id="comparativa" class="tarjeta"></section>
 
       <section class="tarjeta salida" aria-labelledby="titulo-salida">
         <h2 id="titulo-salida">Imprimir y exportar</h2>
@@ -240,15 +252,15 @@
     </form>
   </dialog>
 
-  <script src="js/escala.js?v=4"></script>
-  <script src="js/estadistica.js?v=4"></script>
-  <script src="js/impresion.js?v=4"></script>
-  <script src="js/xlsx.js?v=4"></script>
-  <script src="js/metodos/index.js?v=4"></script>
-  <script src="js/metodos/ideal.js?v=4"></script>
-  <script src="js/metodos/departamental.js?v=4"></script>
-  <script src="js/metodos/cohen.js?v=4"></script>
-  <script src="js/metodos/cohen-mod.js?v=4"></script>
-  <script src="js/app.js?v=4"></script>
+  <script src="js/escala.js?v=6"></script>
+  <script src="js/estadistica.js?v=6"></script>
+  <script src="js/impresion.js?v=6"></script>
+  <script src="js/xlsx.js?v=6"></script>
+  <script src="js/metodos/index.js?v=6"></script>
+  <script src="js/metodos/ideal.js?v=6"></script>
+  <script src="js/metodos/departamental.js?v=6"></script>
+  <script src="js/metodos/cohen.js?v=6"></script>
+  <script src="js/metodos/cohen-mod.js?v=6"></script>
+  <script src="js/app.js?v=6"></script>
 </body>
 </html>

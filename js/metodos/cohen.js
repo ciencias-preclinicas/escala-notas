@@ -134,6 +134,15 @@
         };
       },
 
+      resumenCorto(ctx, res) {
+        const etiqueta = res._esPercentil
+          ? 'el percentil ' + fmt(ctx.params.percentil * 100)
+          : 'la media del ' + fmt((1 - ctx.params.percentil) * 100) + ' % superior';
+        const azar = ctx.params.corregirAzar ? ', descontando ' + fmt(res._R) + ' pts por azar' : '';
+        return 'El corte es el ' + fmt(ctx.params.mult * 100) + ' % de ' + etiqueta + ' del curso (' +
+          fmt(res._X) + ' pts)' + azar + ', con ' + ctx.puntajes.length + ' puntajes cargados.';
+      },
+
       explicar(ctx, res) {
         const p = ctx.params;
         const detalle = res._esPercentil

@@ -92,6 +92,11 @@ for (const [id, params] of [['ideal', {}], ['departamental', {}], ['cohen', {}],
   const html = metodo.explicar(Object.assign({}, contexto, { params: r.params }), r);
   const etiqueta = id + (Object.keys(params).length ? ' ' + JSON.stringify(params) : '');
   comprobar('explicación sin NaN en ' + etiqueta, /NaN|undefined/.test(html), false);
+  if (metodo.resumenCorto) {
+    const corto = metodo.resumenCorto(Object.assign({}, contexto, { params: r.params }), r);
+    comprobar('resumen corto sin NaN en ' + etiqueta, /NaN|undefined/.test(corto), false);
+    comprobar('resumen corto es una frase en ' + etiqueta, corto.length > 30 && !/[<>]/.test(corto), true);
+  }
   comprobar('explicación con contenido en ' + etiqueta, html.length > 80, true);
   comprobar('advertencias sin NaN en ' + etiqueta, /NaN|undefined/.test((r.advertencias || []).join(' ')), false);
   comprobar('trazabilidad sin NaN en ' + etiqueta, /NaN|undefined/.test(JSON.stringify(r.trazabilidad)), false);
@@ -153,6 +158,9 @@ const sinDist = { puntajeIdeal: 80, puntajeMaximoObtenido: 72, puntajes: null, e
 comprobar('cohen no disponible sin distribución', Metodos.evaluar('cohen', sinDist).errores.length, 1);
 comprobar('departamental sí disponible sin distribución', Metodos.evaluar('departamental', sinDist).errores.length, 0);
 comprobar('métodos registrados', Metodos.lista().length, 4);
+comprobar('todos declaran resumenCorto para la portada simple',
+  Metodos.lista().every((m) => typeof m.resumenCorto === 'function'), true);
+comprobar('el método por omisión es el departamental', Metodos.obtener('departamental').id, 'departamental');
 comprobar('advertencia por n pequeño', Metodos.evaluar('cohen', ctx({ puntajes: [40, 50, 60, 70], params: {} })).advertencias.length > 0, true);
 
 seccion('Tabla generada');

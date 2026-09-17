@@ -27,6 +27,11 @@
       };
     },
 
+    resumenCorto(ctx, res) {
+      return 'El corte es el ' + fmt(ctx.exigencia * 100) + ' % del puntaje ideal (' + fmt(ctx.puntajeIdeal) +
+        ' pts), sin considerar los resultados del curso.';
+    },
+
     explicar(ctx, res) {
       return (
         '<p>El corte se fija por decisión pedagógica, como un porcentaje del puntaje ideal, ' +

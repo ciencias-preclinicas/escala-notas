@@ -220,6 +220,13 @@
     }).join('');
 
     const metodo = metodoActivo();
+    // Cuando no se usa el método habitual, el panel plegado lo anuncia.
+    const insignia = $('#avanzado-insignia');
+    const esHabitual = metodo.id === METODO_POR_DEFECTO;
+    insignia.hidden = esHabitual;
+    insignia.textContent = esHabitual ? '' : 'en uso: ' + metodo.nombre;
+    insignia.className = 'insignia' + (esHabitual ? '' : ' insignia-ok');
+
     $('#metodo-descripcion').innerHTML =
       esc(metodo.descripcionCorta) +
       (metodo.referenciaBibliografica ? ' <span class="cita">' + esc(metodo.referenciaBibliografica) + '</span>' : '');
@@ -304,6 +311,7 @@
 
     document.querySelectorAll('.salida .btn').forEach((b) => { b.disabled = false; });
     renderResumen(v);
+    $('#traza-metodo').textContent = resumenTrazabilidad();
     renderAdvertencias();
     renderComparativa(v);
     renderExplicacion();
@@ -344,7 +352,13 @@
       '<div class="dato' + clase + '"><div class="dato-etiqueta">' + esc(etiqueta) + '</div><div class="dato-valor">' +
       esc(valor) + (extra ? ' <small>' + esc(extra) + '</small>' : '') + '</div></div>'
     ).join('') +
-      '<p class="resumen-nota"><strong>' + esc(metodoActivo().nombre) + ':</strong> ' + esc(resumenTrazabilidad()) + '</p>';
+      '<p class="resumen-nota"><strong>' + esc(metodoActivo().nombre) + ':</strong> ' + esc(resumenDelMetodo()) + '</p>';
+  }
+
+  /** Frase legible del método activo; si no la declara, se usa su trazabilidad. */
+  function resumenDelMetodo() {
+    const metodo = metodoActivo();
+    return metodo.resumenCorto ? metodo.resumenCorto(contexto, evaluacion) : resumenTrazabilidad();
   }
 
   /**
@@ -391,7 +405,7 @@
     }).join('');
 
     $('#comparativa').innerHTML =
-      '<h2>Comparación de métodos</h2>' +
+      '<h3>Comparación de métodos</h3>' +
       '<div class="tabla-desliz"><table class="comparativa"><thead><tr><th scope="col">Método</th>' +
       '<th scope="col">Corte</th><th scope="col">% del ideal</th><th scope="col">Reprobación</th></tr></thead>' +
       '<tbody>' + filas + '</tbody></table></div>' +
@@ -737,6 +751,11 @@
   /* ---------- Arranque ---------- */
 
   cargarDesdeUrl();
+  // El panel avanzado se despliega solo si el enlace trae algo que vive dentro de él.
+  const q = new URLSearchParams(location.search);
+  if (estado.metodoId !== METODO_POR_DEFECTO || [...q.keys()].some((k) => k.startsWith('m.') || k.startsWith('banda'))) {
+    $('#avanzado').open = true;
+  }
   $('#banda-activa').checked = estado.banda.activa;
   $('#banda-min').value = E.formatearCorto(estado.banda.corteMinPct, 2);
   $('#banda-max').value = E.formatearCorto(estado.banda.corteMaxPct, 2);

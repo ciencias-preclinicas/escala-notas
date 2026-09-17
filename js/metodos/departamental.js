@@ -65,6 +65,25 @@
       };
     },
 
+    resumenCorto(ctx, res) {
+      const ideal = ctx.puntajeIdeal;
+      const tope = ctx.params.topeDescuento;
+      if (res._promedio === null) {
+        return ctx.puntajeMaximoObtenido === null || ctx.puntajeMaximoObtenido === undefined
+          ? 'Sin ajuste: se usa el puntaje ideal (' + fmt(ideal) + '). Ingresa el puntaje máximo obtenido para ajustar la escala.'
+          : 'Sin ajuste: el puntaje máximo obtenido es igual al ideal.';
+      }
+      const base = 'Promedio entre ideal (' + fmt(ideal) + ') y obtenido (' + fmt(ctx.puntajeMaximoObtenido) + ') = ' +
+        fmt(res._promedio) + '. ';
+      if (res._topeAplicado) {
+        return base + 'Eso descontaría ' + fmt(ideal - res._promedio) + ' puntos (' +
+          fmt(((ideal - res._promedio) / ideal) * 100) + ' %), más que el tope de ' + fmt(tope * 100) +
+          ' %, así que se descuentan solo ' + fmt(ideal - res.pmax) + ' puntos.';
+      }
+      return base + 'Descuento de ' + fmt(ideal - res.pmax) + ' puntos (' + fmt(((ideal - res.pmax) / ideal) * 100) +
+        ' %), dentro del tope de ' + fmt(tope * 100) + ' %.';
+    },
+
     explicar(ctx, res) {
       const ideal = ctx.puntajeIdeal;
       const tope = ctx.params.topeDescuento;
